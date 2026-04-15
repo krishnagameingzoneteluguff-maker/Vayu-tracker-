@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GrindTracker Pro</title>
+
+<style>
+body {
+  margin:0;
+  font-family:sans-serif;
+  background:#0f172a;
+  color:white;
+  text-align:center;
+}
+
+/* INPUTS */
+input, select, button {
+  width:90%;
+  padding:12px;
+  margin-top:10px;
+  border:none;
+  border-radius:10px;
+  font-size:16px;
+}
+
+button {
+  background:#22c55e;
+  color:white;
+}
+
+/* CARD */
+.card {
+  background:#1e293b;
+  padding:15px;
+  border-radius:12px;
+  margin:15px;
+}
+
+/* LOG */
+.log {
+  background:#020617;
+  padding:10px;
+  margin-top:10px;
+  border-radius:10px;
+}
+
+.del-btn {
+  background:#ef4444;
+  margin-top:5px;
+  padding:6px;
+  font-size:12px;
+}
+
+/* NAV */
+.nav {
+  position:fixed;
+  bottom:0;
+  width:100%;
+  background:#020617;
+  display:flex;
+  justify-content:space-around;
+  padding:10px 0;
+}
+
+.nav button {
+  background:none;
+  color:white;
+  font-size:18px;
+}
+
+/* TEXT */
+.streak { color:#22c55e; }
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginPage">
+<h2>🔐 Login</h2>
+<input id="user" placeholder="Username">
+<input id="pass" type="password" placeholder="Password">
+<button onclick="login()">Enter</button>
+</div>
+
+<!-- APP -->
+<div id="app" style="display:none;">
+
+<h2>🔥 GrindTracker</h2>
+<h3 class="streak" id="streakText"></h3>
+<h4 id="statsText"></h4>
+
+<!-- HOME -->
+<div id="home">
+<div class="card">
+
+<input type="time" id="start">
+<select id="startampm">
+<option>AM</option>
+<option>PM</option>
+</select>
+
+<input type="time" id="end">
+<select id="endampm">
+<option>AM</option>
+<option>PM</option>
+</select>
+
+<input id="task" placeholder="Task">
+
+<button onclick="addTask()">Add Task</button>
+<button onclick="aiSuggest()">🤖 AI Suggest</button>
+
+</div>
+</div>
+
+<!-- HISTORY -->
+<div id="history" style="display:none;">
+<div class="card">
+<div id="logs"></div>
+</div>
+</div>
+
+<!-- ANALYTICS -->
+<div id="analytics" style="display:none;">
+<div class="card">
+<h3>📊 Analytics</h3>
+<div id="analysis"></div>
+</div>
+</div>
+
+</div>
+
+<!-- NAV -->
+<div class="nav">
+<button onclick="showTab('home')">🏠</button>
+<button onclick="showTab('history')">📜</button>
+<button onclick="showTab('analytics')">📊</button>
+</div>
+
+<script>
+
+// ---------- LOGIN (100% SAFE) ----------
+function login(){
+  const u = document.getElementById("user").value.trim();
+  const p = document.getElementById("pass").value.trim();
+
+  if(u === "" || p === ""){
+    alert("Enter username & password");
+    return;
+  }
+
+  if(p === "1234"){
+    document.getElementById("loginPage").style.display = "none";
+    document.getElementById("app").style.display = "block";
+  } else {
+    alert("Wrong password (use 1234)");
+  }
+}
+
+// ---------- STORAGE ----------
+let today = new Date().toDateString();
+let data = JSON.parse(localStorage.getItem("data")) || {};
+
+// ---------- STREAK ----------
+let streakVal = parseInt(localStorage.getItem("streak")) || 0;
+let last = localStorage.getItem("last");
+
+if(last !== today){
+  streakVal++;
+  localStorage.setItem("streak", streakVal);
+  localStorage.setItem("last", today);
+}
+
+document.getElementById("streakText").innerText = "🔥 Streak: " + streakVal;
+
+// ---------- TIME ----------
+function convertTo24(time, ampm){
+  let [h,m] = time.split(":").map(Number);
+
+  if(ampm === "PM" && h !== 12) h += 12;
+  if(ampm === "AM" && h === 12) h = 0;
+
+  return h + ":" + m;
+}
+
+function format12(time){
+  let [h,m] = time.split(":").map(Number);
+
+  let ap = h >= 12 ? "PM" : "AM";
+  let hr = h % 12 || 12;
+
+  return hr + ":" + m + " " + ap;
+}
+
+// ---------- HOURS ----------
+function calcHours(s,e){
+  let [sh,sm]=s.split(":").map(Number);
+  let [eh,em]=e.split(":").map(Number);
+
+  let start = sh + sm/60;
+  let end = eh + em/60;
+
+  if(end < start) end += 24;
+
+  return (end-start).toFixed(1);
+}
+
+// ---------- ADD TASK ----------
+function addTask(){
+  const s = convertTo24(start.value,startampm.value);
+  const e = convertTo24(end.value,endampm.value);
+  const t = task.value.trim();
+
+  if(!s || !e || t === ""){
+    alert("Fill all fields");
+    return;
+  }
+
+  if(!data[today]) data[today] = [];
+
+  let hrs = calcHours(s,e);
+
+  data[today].push({s,e,t,hrs});
+
+  localStorage.setItem("data", JSON.stringify(data));
+
+  display();
+  showStats();
+}
+
+// ---------- DELETE ----------
+function del(date,index){
+  data[date].splice(index,1);
+
+  if(data[date].length === 0){
+    delete data[date];
+  }
+
+  localStorage.setItem("data", JSON.stringify(data));
+
+  display();
+  showStats();
+}
+
+// ---------- DISPLAY ----------
+function display(){
+  const logs = document.getElementById("logs");
+  logs.innerHTML = "";
+
+  Object.keys(data).reverse().forEach(date=>{
+    logs.innerHTML += `<b>${date}</b>`;
+
+    data[date].forEach((item,i)=>{
+      logs.innerHTML += `
+      <div class="log">
+      ${format12(item.s)} - ${format12(item.e)} (${item.hrs}h)<br>
+      ${item.t}
+      <br>
+      <button class="del-btn" onclick="del('${date}',${i})">Delete</button>
+      </div>`;
+    });
+  });
+}
+
+// ---------- STATS ----------
+function showStats(){
+  let total = 0;
+
+  Object.values(data).forEach(day=>{
+    day.forEach(item=>{
+      total += parseFloat(item.hrs);
+    });
+  });
+
+  document.getElementById("statsText").innerText =
+    "⏱ Total Hours: " + total.toFixed(1);
+}
+
+// ---------- ANALYTICS ----------
+function showAnalytics(){
+  const box = document.getElementById("analysis");
+  box.innerHTML = "";
+
+  Object.keys(data).forEach(date=>{
+    let total = 0;
+
+    data[date].forEach(item=>{
+      total += parseFloat(item.hrs);
+    });
+
+    box.innerHTML += `<div>${date} → ${total.toFixed(1)} hrs</div>`;
+  });
+}
+
+// ---------- NAV ----------
+function showTab(tab){
+  document.getElementById("home").style.display =
+    tab === "home" ? "block" : "none";
+
+  document.getElementById("history").style.display =
+    tab === "history" ? "block" : "none";
+
+  document.getElementById("analytics").style.display =
+    tab === "analytics" ? "block" : "none";
+
+  if(tab === "history") display();
+  if(tab === "analytics") showAnalytics();
+}
+
+// ---------- AI ----------
+function aiSuggest(){
+  let todayData = data[today] || [];
+
+  let total = todayData.reduce((sum,item)=> sum + parseFloat(item.hrs),0);
+
+  let msg =
+    total < 4 ? "🔥 Work more today" :
+    total < 8 ? "⚡ Good progress" :
+    "💯 Excellent discipline";
+
+  alert("🤖 " + msg);
+}
+
+// INIT
+display();
+showStats();
+
+</script>
+
+</body>
+</html>
